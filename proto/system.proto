@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package system;
+
+option go_package = "pb/systempb;systempb";
+
+// 客户端请求文件
+message FileRequest {
+  string file_path = 1; // 本地文件路径
+}
+
+// 服务端分块返回数据
+message FileChunk {
+  bytes content = 1;     // 文件内容（块）
+  int64 chunk_size = 2;  // 当前块的大小
+  bool is_last = 3;      // 是否为最后一块（可选）
+}
+
+service SystemService {
+  // 读取文件以流形式返回
+  rpc SendFile (FileRequest) returns (stream FileChunk);
+}
+//protoc --proto_path=proto proto/system.proto --go_out=pb --go_opt=paths=source_relative --go-grpc_out=pb --go-grpc_opt=paths=source_relative

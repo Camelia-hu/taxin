@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package template;
+
+option go_package = "pb/userpb;userpb";
+
+
+// 用户结构体
+message User {
+  int64 id = 1;
+  string user_id = 2;
+  string password = 3;
+  string like = 4;
+  string like_embedding = 5;
+  string create_at = 6;
+  string update_at = 7;
+}
+
+// ========== 用户注册 ==========
+message RegisterRequest {
+  string username = 1;
+  string password = 2;
+  string like = 3;
+}
+
+message RegisterResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  string message = 3;
+  int64 user_id = 4;
+}
+
+// ========== 用户登录 ==========
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  string message = 3;
+}
+
+// ========== 获取用户信息 ==========
+message GetUserInfoRequest {
+  string user_id = 1;
+}
+
+message GetUserInfoResponse {
+  User user = 1;
+}
+
+service UserService {
+  // 用户注册（幂等）
+  rpc Register (RegisterRequest) returns (RegisterResponse);
+
+  // 用户登录（返回 JWT）
+  rpc Login (LoginRequest) returns (LoginResponse);
+
+  // 获取用户信息（需登录）
+  rpc GetUserInfo (GetUserInfoRequest) returns (GetUserInfoResponse);
+}
