@@ -1,7 +1,7 @@
 # 项目介绍
 
 ## 如何启动
-打开终端运行 make run，服务端起起来后可以运行客户端测试userservice，systemservice用service目录下单元测试测 <br>
+打开终端运行 make run，服务端起起来后可以运行客户端测试userservice，目前测试数据是已经注册过的，由幂等性可以得到信息：用户已注册过。systemservice用service目录下单元测试测 <br>
 打开另一个终端运行 make pprof，下载Graphviz后在跳转到的浏览器8080端口页面可以看见可视化性能分析
 
 ## 有关说明
