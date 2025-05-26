@@ -1,22 +1,4 @@
 services:
-  redis:
-    image: "redis:7.0.15-alpine"
-    container_name: redis
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    mem_limit: 512m
-    networks:
-      - backend
-
   jaeger-all-in-one:
     container_name: jaeger-all-in-one
     image: jaegertracing/all-in-one:latest
@@ -61,24 +43,6 @@ services:
     networks:
       - backend
 
-#  taxin-pb:
-#    build:
-#      context: .
-#      dockerfile: ./deploy/dockerfile
-#    container_name: taxin-pb
-#    restart: always
-#    ports:
-#      - "50052:50052" # gRPC 服务端口
-#      - "6060:6060" # pprof 服务端口
-#    environment:
-#      - TOKEN_SECRET=${TOKEN_SECRET:-kfgakgfuagfuhb65441@#$%uihafi}
-#      - GO_ENV=online
-#    depends_on:
-#      - redis
-#      - postgres
-#      - jaeger-all-in-one
-#    networks:
-#      - backend
 
 networks:
   backend:
