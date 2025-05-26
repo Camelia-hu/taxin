@@ -7,7 +7,7 @@
 ## 有关说明
 client为客户端，测试userservice <br>
 cmd为服务端启动入口 <br>
-middelware设置两个拦截器，为了方便测试但并没有添加到grpc中 <br>
+middelware设置两个拦截器，为了方便测试并没有添加到grpc中 <br>
 model初始化豆包向量化模型 <br>
 pb存放grpc生成文件 <br>
 service为业务具体代码 <br>
