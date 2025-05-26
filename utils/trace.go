@@ -13,10 +13,9 @@ import (
 	"log"
 )
 
-func InitTracer(ctx context.Context, serviceName string) (*sdktrace.TracerProvider, error) {
+func Inittracer(ctx context.Context, serviceName string) (*sdktrace.TracerProvider, error) {
 	// 连接 Jaeger OTLP 端口
-	conn, err := grpc.DialContext(
-		ctx,
+	conn, err := grpc.NewClient(
 		"localhost:4317",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),

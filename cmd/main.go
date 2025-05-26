@@ -12,11 +12,14 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 )
 
@@ -34,26 +37,28 @@ func newGRPCServer() *grpc.Server {
 	)
 }
 
+// UnaryServerInterceptor
 // 创建 Jaeger 追踪器
-func newTracerProvider(lc fx.Lifecycle) (func(context.Context) error, error) {
+func newTracerProvider() (*trace.TracerProvider, error) {
 	ctx := context.Background()
-	tp, err := utils.InitTracer(ctx, "taxin")
+	tp, err := utils.Inittracer(ctx, "taxin")
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize tracer: %w", err)
+		return nil, fmt.Errorf("failed to init tracer: %w", err)
 	}
 
-	// 设置全局的追踪传播器
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, propagation.Baggage{}))
 
-	// 注册生命周期钩子
+	return tp, nil
+}
+
+func registerTracerShutdown(lc fx.Lifecycle, tp *trace.TracerProvider) {
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
-			fmt.Println("Shutting down tracer provider")
+			fmt.Println("shutting down tracer")
 			return tp.Shutdown(ctx)
 		},
 	})
-
-	return tp.Shutdown, nil
 }
 
 func registerServices(
@@ -68,8 +73,21 @@ func registerServices(
 func startServer(lc fx.Lifecycle, s *grpc.Server) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			lis, _ := net.Listen("tcp", ":50051")
+			lis, err := net.Listen("tcp", ":50051")
+			if err != nil {
+				return err
+			}
 			go s.Serve(lis)
+
+			// 启动 pprof 服务
+			go func() {
+				fmt.Println("Starting pprof server on :6060")
+				err := http.ListenAndServe(":6060", nil)
+				if err != nil {
+					fmt.Printf("Failed to start pprof server: %v\n", err)
+				}
+			}()
+
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
@@ -79,6 +97,39 @@ func startServer(lc fx.Lifecycle, s *grpc.Server) {
 	})
 }
 
+//func startServer(lc fx.Lifecycle, s *grpc.Server) {
+//	lc.Append(fx.Hook{
+//		OnStart: func(ctx context.Context) error {
+//			lis, _ := net.Listen("tcp", ":50051")
+//			go s.Serve(lis)
+//			return nil
+//		},
+//		OnStop: func(ctx context.Context) error {
+//			s.GracefulStop()
+//			return nil
+//		},
+//	})
+//}
+
+//	func startPprofServer(lc fx.Lifecycle) {
+//		addr := ":6060" // pprof 服务监听的地址
+//		server := &http.Server{Addr: addr}
+//
+//		lc.Append(fx.Hook{
+//			OnStart: func(ctx context.Context) error {
+//				go func() {
+//					log.Printf("Starting pprof server on %s", addr)
+//					if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+//						log.Printf("Failed to start pprof server: %v", err)
+//					}
+//				}()
+//				return nil
+//			},
+//			OnStop: func(ctx context.Context) error {
+//				return server.Shutdown(ctx)
+//			},
+//		})
+//	}
 func main() {
 	godotenv.Load()
 	fx.New(
@@ -91,6 +142,7 @@ func main() {
 			service.NewService,
 		),
 		fx.Invoke(
+			registerTracerShutdown,
 			registerServices,
 			startServer,
 		),

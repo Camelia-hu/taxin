@@ -39,26 +39,37 @@ func NewUserService(db *gorm.DB, client *arkruntime.Client) *UserService {
 
 // 1. 实现 Register 方法
 func (s *UserService) Register(ctx context.Context, req *userpb.RegisterRequest) (*userpb.RegisterResponse, error) {
-	// ✅ 这里写你的注册业务逻辑：校验输入、查询数据库、插入新用户
-	//按道理来说应该在router层用结构体标签来参数校验，这里为了体现功能完整性在此进行参数校验
-	tr := otel.Tracer("user-service")
-	_, span := tr.Start(ctx, "Register")
+	tr := otel.Tracer("taxin")
+	ctx, span := tr.Start(ctx, "UserService.Register")
 	defer span.End()
 
+	//按道理来说应该在router层用结构体标签来参数校验，这里为了体现功能完整性在此进行参数校验
 	if req.Password == "" {
 		span.SetStatus(codes.Error, "password err")
 		return nil, errors.New(PassWordNil)
 	}
+
 	var user model.UserModel
 	err := s.db.Where("username = ?", req.Username).First(&user).Error
 	if err == nil {
-		return &userpb.RegisterResponse{Message: UserIdExist}, err
+		// 用户已存在，注册幂等处理：直接返回 Token
+		accessToken, refreshToken, err := utils.DeliverTokenByRPCService(user.UserId)
+		if err != nil {
+			return &userpb.RegisterResponse{Message: UserErr}, err
+		}
+		span.SetAttributes(attribute.String("user_id", user.UserId))
+		user_id, _ := strconv.Atoi(user.UserId)
+		return &userpb.RegisterResponse{
+			AccessToken:  accessToken,
+			RefreshToken: refreshToken,
+			UserId:       int64(user_id), // 需要你实现
+			Message:      "用户已存在，返回Token",
+		}, nil
 	}
-	span.SetAttributes(attribute.String("user_id", user.UserId))
-	var UserId uint64
+
+	UserId, _ := utils.GenerateUserID()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 没找到，说明用户还不存在，可以注册
-		UserId, err = utils.GenerateUserID()
 		like, err := utils.Embedding(ctx, req.Like, s.client)
 		embeddingVector := like.Data[0].Embedding
 		embedding := pgvector.NewVector(embeddingVector[:128])
@@ -76,17 +87,24 @@ func (s *UserService) Register(ctx context.Context, req *userpb.RegisterRequest)
 			UserName:      req.Username,
 		}).Error
 		if err != nil {
+			span.SetStatus(codes.Error, "db create err")
 			return &userpb.RegisterResponse{Message: DbCreateErr}, err
 		}
-
 	} else {
 		return &userpb.RegisterResponse{Message: DbFindErr}, err
 	}
+
 	accessToken, refreshToken, err := utils.DeliverTokenByRPCService(user.UserId)
 	if err != nil {
 		return &userpb.RegisterResponse{Message: UserErr}, err
 	}
 	// 假设注册成功：
+	span.SetAttributes(
+		attribute.String("user_id", strconv.FormatUint(UserId, 10)),
+		attribute.String("username", req.Username),
+		attribute.String("event", "user_registered"),
+	)
+
 	return &userpb.RegisterResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -99,7 +117,7 @@ func (s *UserService) Register(ctx context.Context, req *userpb.RegisterRequest)
 func (s *UserService) Login(ctx context.Context, req *userpb.LoginRequest) (*userpb.LoginResponse, error) {
 	// ✅ 这里写你的登录业务逻辑：校验账号密码，生成 token
 	tr := otel.Tracer("user-service")
-	_, span := tr.Start(ctx, "Login")
+	ctx, span := tr.Start(ctx, "Login")
 	defer span.End()
 
 	var user model.UserModel
@@ -130,7 +148,7 @@ func (s *UserService) Login(ctx context.Context, req *userpb.LoginRequest) (*use
 func (s *UserService) GetUserInfo(ctx context.Context, req *userpb.GetUserInfoRequest) (*userpb.GetUserInfoResponse, error) {
 	// ✅ 这里写你的获取信息逻辑：根据 userId 查询数据库返回信息
 	tr := otel.Tracer("user-service")
-	_, span := tr.Start(ctx, "GetUserInfo")
+	ctx, span := tr.Start(ctx, "GetUserInfo")
 	defer span.End()
 
 	var user model.UserModel
