@@ -56,31 +56,3 @@ func Inittracer(ctx context.Context, serviceName string) (*sdktrace.TracerProvid
 	otel.SetTracerProvider(tp)
 	return tp, nil
 }
-
-//func NewTracer(lc fx.Lifecycle) (opentracing.Tracer, error) {
-//	cfg := config.Configuration{
-//		ServiceName: "user-service",
-//		Sampler: &config.SamplerConfig{
-//			Type:  "const",
-//			Param: 1,
-//		},
-//		Reporter: &config.ReporterConfig{
-//			LogSpans:           true,
-//			LocalAgentHostPort: "localhost:6831",
-//		},
-//	}
-//
-//	tracer, closer, err := cfg.NewTracer()
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	lc.Append(fx.Hook{
-//		OnStop: func(ctx context.Context) error {
-//			return closer.Close()
-//		},
-//	})
-//
-//	opentracing.SetGlobalTracer(tracer)
-//	return tracer, nil
-//}

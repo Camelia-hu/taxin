@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,62 +21,52 @@ const bufferSize = 1024 * 1024 // 1MB内存缓冲区
 
 // 测试SendFile服务方法
 func TestSendFile(t *testing.T) {
-	//============ 测试准备 ============
+	os.Setenv("BASE_DIR", os.TempDir()) //  设置 baseDir
+
 	testContent := []byte("This is a test file content for gRPC streaming")
-	tmpFile, err := os.CreateTemp("", "testfile-*.txt")
-	require.NoError(t, err, "创建临时文件失败")
+	tmpFile, err := os.CreateTemp(os.Getenv("BASE_DIR"), "testfile-*.txt") //  创建在 baseDir 中
+	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
 	_, err = tmpFile.Write(testContent)
-	require.NoError(t, err, "写入测试内容失败")
+	require.NoError(t, err)
 	tmpFile.Close()
 
-	//============ 服务端配置 ============
 	lis := bufconn.Listen(bufferSize)
 	grpcServer := grpc.NewServer()
 
 	systemService := NewService()
 	pb.RegisterSystemServiceServer(grpcServer, systemService)
 
-	go func() {
-		if err := grpcServer.Serve(lis); err != nil {
-			t.Logf("服务端异常退出: %v", err)
-		}
-	}()
+	go grpcServer.Serve(lis)
 	defer grpcServer.GracefulStop()
 
-	//============ 客户端配置 ============
 	ctx := context.Background()
 
-	// 使用新的客户端创建方式
-	conn, err := grpc.NewClient(
-		"passthrough:///bufnet", // 关键修改点
+	conn, err := grpc.NewClient("passthrough:///bufnet",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return lis.DialContext(ctx)
 		}),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(t, err, "创建客户端失败")
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
 	defer conn.Close()
 
 	client := pb.NewSystemServiceClient(conn)
 
-	//============ 测试执行 ============
 	stream, err := client.SendFile(ctx, &pb.FileRequest{
-		FilePath: tmpFile.Name(),
+		FilePath: filepath.Base(tmpFile.Name()), //  只传相对路径
 	})
-	require.NoError(t, err, "创建流失败")
+	require.NoError(t, err)
 
-	//============ 结果验证 ============
 	var receivedData []byte
 	for {
 		chunk, err := stream.Recv()
 		if err == io.EOF {
 			break
 		}
-		require.NoError(t, err, "接收数据块失败")
+		require.NoError(t, err)
 		receivedData = append(receivedData, chunk.Content...)
 	}
 
-	assert.Equal(t, testContent, receivedData, "接收内容与源文件不一致")
+	assert.Equal(t, testContent, receivedData)
 }

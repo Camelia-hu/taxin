@@ -26,7 +26,7 @@ const (
 	PassWordErr  = "密码错误"
 )
 
-// 你自己的结构体，实现 gRPC 接口
+// 添加client db与fx框架配合
 type UserService struct {
 	client                                *arkruntime.Client
 	db                                    *gorm.DB
@@ -37,7 +37,7 @@ func NewUserService(db *gorm.DB, client *arkruntime.Client) *UserService {
 	return &UserService{db: db, client: client}
 }
 
-// 1. 实现 Register 方法
+// 实现 Register 方法
 func (s *UserService) Register(ctx context.Context, req *userpb.RegisterRequest) (*userpb.RegisterResponse, error) {
 	tr := otel.Tracer("taxin")
 	ctx, span := tr.Start(ctx, "UserService.Register")
@@ -62,7 +62,7 @@ func (s *UserService) Register(ctx context.Context, req *userpb.RegisterRequest)
 		return &userpb.RegisterResponse{
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken,
-			UserId:       int64(user_id), // 需要你实现
+			UserId:       int64(user_id),
 			Message:      "用户已存在，返回Token",
 		}, nil
 	}
@@ -87,15 +87,17 @@ func (s *UserService) Register(ctx context.Context, req *userpb.RegisterRequest)
 			UserName:      req.Username,
 		}).Error
 		if err != nil {
-			span.SetStatus(codes.Error, "db create err")
+			span.SetStatus(codes.Error, DbCreateErr)
 			return &userpb.RegisterResponse{Message: DbCreateErr}, err
 		}
 	} else {
+		span.SetStatus(codes.Error, DbFindErr)
 		return &userpb.RegisterResponse{Message: DbFindErr}, err
 	}
 
 	accessToken, refreshToken, err := utils.DeliverTokenByRPCService(user.UserId)
 	if err != nil {
+		span.SetStatus(codes.Error, UserErr)
 		return &userpb.RegisterResponse{Message: UserErr}, err
 	}
 	// 假设注册成功：
@@ -113,7 +115,7 @@ func (s *UserService) Register(ctx context.Context, req *userpb.RegisterRequest)
 	}, nil
 }
 
-// 2. 实现 Login 方法
+// 实现 Login 方法
 func (s *UserService) Login(ctx context.Context, req *userpb.LoginRequest) (*userpb.LoginResponse, error) {
 	// ✅ 这里写你的登录业务逻辑：校验账号密码，生成 token
 	tr := otel.Tracer("user-service")
@@ -123,20 +125,29 @@ func (s *UserService) Login(ctx context.Context, req *userpb.LoginRequest) (*use
 	var user model.UserModel
 	err := s.db.Where("username = ?", req.Username).First(&user).Error
 	if err != nil {
+		span.SetStatus(codes.Error, UserNotFound)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return &userpb.LoginResponse{Message: UserNotFound}, err
 		} else {
+			span.SetStatus(codes.Error, DbFindErr)
 			return &userpb.LoginResponse{Message: DbFindErr}, err
 		}
 	}
 
 	if !utils.CheckPassword(user.Password, req.Password) {
+		span.SetStatus(codes.Error, PassWordErr)
 		return &userpb.LoginResponse{Message: PassWordErr}, errors.New(PassWordErr)
 	}
 	accessToken, refreshToken, err := utils.DeliverTokenByRPCService(user.UserId)
 	if err != nil {
+		span.SetStatus(codes.Error, UserErr)
 		return &userpb.LoginResponse{Message: UserErr}, err
 	}
+	span.SetAttributes(
+		attribute.String("user_id", user.UserId),
+		attribute.String("username", req.Username),
+		attribute.String("event", "user_login"),
+	)
 	return &userpb.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -144,7 +155,7 @@ func (s *UserService) Login(ctx context.Context, req *userpb.LoginRequest) (*use
 	}, nil
 }
 
-// 3. 实现 GetUserInfo 方法
+// 实现 GetUserInfo 方法
 func (s *UserService) GetUserInfo(ctx context.Context, req *userpb.GetUserInfoRequest) (*userpb.GetUserInfoResponse, error) {
 	// ✅ 这里写你的获取信息逻辑：根据 userId 查询数据库返回信息
 	tr := otel.Tracer("user-service")
@@ -155,19 +166,26 @@ func (s *UserService) GetUserInfo(ctx context.Context, req *userpb.GetUserInfoRe
 	err := s.db.Where("user_id = ?", req.UserId).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			span.SetStatus(codes.Error, UserNotFound)
 			return &userpb.GetUserInfoResponse{User: nil}, errors.New(UserNotFound + err.Error())
 		} else {
+			span.SetStatus(codes.Error, DbFindErr)
 			return &userpb.GetUserInfoResponse{User: nil}, errors.New(DbFindErr + err.Error())
 		}
 	}
-	span.SetAttributes(attribute.String("user_id", user.UserId))
+	span.SetAttributes(
+		attribute.String("user_id", user.UserId),
+		attribute.String("username", user.UserName),
+		attribute.String("event", "user_registered"),
+	)
 	return &userpb.GetUserInfoResponse{
 		User: &userpb.User{
-			Id:       user.Id,
-			UserId:   user.UserId,
-			Like:     user.Like,
-			CreateAt: user.CreateAt.String(),
-			UpdateAt: user.UpdateAt.String(),
+			Id:            user.Id,
+			UserId:        user.UserId,
+			Like:          user.Like,
+			LikeEmbedding: user.LikeEmbedding.String(),
+			CreateAt:      user.CreateAt.String(),
+			UpdateAt:      user.UpdateAt.String(),
 		},
 	}, nil
 }

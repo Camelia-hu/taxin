@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	pb_user "github.com/Camelia-hu/taxin/pb/userpb"
+	pbuser "github.com/Camelia-hu/taxin/pb/userpb"
 )
 
 func main() {
@@ -43,10 +43,10 @@ func testUserService(ctx context.Context, conn *grpc.ClientConn) {
 	defer span.End()
 
 	// 创建 UserService 客户端
-	client := pb_user.NewUserServiceClient(conn)
+	client := pbuser.NewUserServiceClient(conn)
 
 	// 测试注册
-	registerReq := &pb_user.RegisterRequest{
+	registerReq := &pbuser.RegisterRequest{
 		Password: "testpassword",
 		Like:     "swimming",
 		Username: "testuser2",
@@ -58,9 +58,10 @@ func testUserService(ctx context.Context, conn *grpc.ClientConn) {
 	}
 	span.SetStatus(codes.Error, "register ok")
 	fmt.Printf("Register User ID: %d\n", registerResp.UserId)
+	fmt.Printf("Message: %s\n", registerResp.Message)
 
 	// 测试登录
-	loginReq := &pb_user.LoginRequest{
+	loginReq := &pbuser.LoginRequest{
 		Username: "testuser2",
 		Password: "testpassword",
 	}
@@ -73,7 +74,7 @@ func testUserService(ctx context.Context, conn *grpc.ClientConn) {
 
 	// 测试获取用户信息
 	ctxWithToken := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+loginResp.AccessToken)
-	userInfoReq := &pb_user.GetUserInfoRequest{UserId: "568176012081253442"}
+	userInfoReq := &pbuser.GetUserInfoRequest{UserId: "568176012081253442"}
 	userInfoResp, err := client.GetUserInfo(ctxWithToken, userInfoReq)
 	if err != nil {
 		span.SetStatus(codes.Error, "Failed to get user info")
